@@ -11,3 +11,11 @@
 9. **Mock integrations:** payment, OTP and messaging providers are adapters. Phase 1 implements the OTP adapter and persistence models; payment and message adapters arrive in later phases.
 10. **Sample people and phones:** names required by the brief are retained; all phone numbers and additional seed identities are synthetic reserved demo values.
 11. **Scale:** indexes are added for the expected query paths, but production capacity, backup, retention and audit requirements need load/security review before rollout.
+
+## Phase 2 business-logic assumptions
+
+- Instalment status precedence is `paid` (zero balance), then `part_paid` (any payment with a remaining balance), then `overdue`, `due_soon` (due within 7 calendar days, inclusive), and `upcoming`. `daysOverdue` is still calculated for a part-paid instalment; this matches the supplied Ishita example (part paid, 23 days overdue).
+- Payments targeted at an instalment never spill into another instalment. Any excess remains unallocated for the accounts workflow; untargeted payments allocate oldest due first.
+- Refund arithmetic uses integer paise and round-half-up for proportional divisions. The supplied refund formula is an assumption, not legal advice or a representation of the institute's final published policy. The processing fee is calculated on the pre-discount total fee and capped at ₹5,000. GST is split from the GST-inclusive refundable amount using the configured GST rate.
+- Risk-score weights are deterministic heuristics: payment signals cap at 50, attendance decline at 30, and test-score decline at 20. Bands are low (0–34), medium (35–64), high (65–100). This is a counsellor triage aid only, not a validated predictive model.
+- Reminder schedule generation returns only offsets on or after the injected current date; dispatch must re-check the live balance and active status immediately before sending. Persistence-level idempotency is enforced by the existing unique `(instalmentId, offsetDays)` index in the reminder model.

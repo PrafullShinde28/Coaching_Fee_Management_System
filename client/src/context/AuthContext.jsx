@@ -70,6 +70,7 @@ export function AuthProvider({ children }) {
     loading,
     isAuthenticated: Boolean(user),
     isParent: user?.role === 'parent',
+    isAccounts: user?.role === 'accounts',
     consentRequired,
     login,
     logout,

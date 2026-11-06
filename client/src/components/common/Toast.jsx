@@ -1,8 +1,36 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useToast } from '../../context/ToastContext';
 
+let activeAddToast = null;
+
+export const toast = {
+  success: (msg) => {
+    if (activeAddToast) activeAddToast(msg, 'success');
+    else console.log('[Toast success]', msg);
+  },
+  error: (msg) => {
+    if (activeAddToast) activeAddToast(msg, 'error');
+    else console.error('[Toast error]', msg);
+  },
+  info: (msg) => {
+    if (activeAddToast) activeAddToast(msg, 'info');
+    else console.log('[Toast info]', msg);
+  },
+  warning: (msg) => {
+    if (activeAddToast) activeAddToast(msg, 'warning');
+    else console.warn('[Toast warning]', msg);
+  }
+};
+
 export function ToastContainer() {
-  const { toasts, removeToast } = useToast();
+  const { toasts, removeToast, addToast } = useToast();
+
+  useEffect(() => {
+    activeAddToast = addToast;
+    return () => {
+      activeAddToast = null;
+    };
+  }, [addToast]);
 
   if (toasts.length === 0) return null;
 
@@ -48,11 +76,11 @@ export function ToastContainer() {
         width: 'calc(100% - var(--space-8))'
       }}
     >
-      {toasts.map((toast) => {
-        const style = typeStyles[toast.type] || typeStyles.info;
+      {toasts.map((t) => {
+        const style = typeStyles[t.type] || typeStyles.info;
         return (
           <div
-            key={toast.id}
+            key={t.id}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -70,11 +98,11 @@ export function ToastContainer() {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <span style={{ fontWeight: 'bold' }}>{style.icon}</span>
-              <span>{toast.message}</span>
+              <span>{t.message}</span>
             </div>
             <button
               type="button"
-              onClick={() => removeToast(toast.id)}
+              onClick={() => removeToast(t.id)}
               aria-label="Dismiss toast"
               style={{
                 background: 'transparent',

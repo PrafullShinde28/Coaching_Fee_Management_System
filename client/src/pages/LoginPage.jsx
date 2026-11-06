@@ -10,7 +10,7 @@ import { LanguageSwitcher } from '../components/common/LanguageSwitcher';
 
 export function LoginPage() {
   const { t } = useTranslation();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, isAccounts } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -22,15 +22,16 @@ export function LoginPage() {
   const [error, setError] = useState(null);
   const [demoOtp, setDemoOtp] = useState(null);
 
-  const from = location.state?.from?.pathname || '/parent/dashboard';
+  const from = location.state?.from?.pathname || (isAccounts ? '/accounts/dashboard' : '/parent/dashboard');
 
   if (isAuthenticated) {
-    navigate(from, { replace: true });
+    const target = isAccounts ? '/accounts/dashboard' : '/parent/dashboard';
+    navigate(from && from !== '/' && !from.includes('login') ? from : target, { replace: true });
     return null;
   }
 
   const handleRequestOtp = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     setError(null);
     if (!phone || phone.trim().length < 10) {
       setError(t('auth.invalidPhone', 'Please enter a valid phone number'));
@@ -42,7 +43,7 @@ export function LoginPage() {
       const res = await api.auth.requestOtp(phone.trim());
       if (res.demoOtp) {
         setDemoOtp(res.demoOtp);
-        setOtp(res.demoOtp); // Auto-populate demo OTP for smooth development flow
+        setOtp(res.demoOtp); // Auto-populate demo OTP for smooth testing
       }
       setStep('otp');
       addToast(`${t('auth.otpSentTo', 'OTP sent to')} ${phone}`, 'success');
@@ -63,9 +64,16 @@ export function LoginPage() {
 
     try {
       setLoading(true);
-      await login(phone.trim(), otp.trim());
+      const res = await login(phone.trim(), otp.trim());
       addToast(t('dashboard.welcome', 'Welcome back!'), 'success');
-      navigate(from, { replace: true });
+      const userRole = res?.user?.role;
+      if (userRole === 'accounts') {
+        const dest = from.startsWith('/accounts') ? from : '/accounts/dashboard';
+        navigate(dest, { replace: true });
+      } else {
+        const dest = from.startsWith('/parent') ? from : '/parent/dashboard';
+        navigate(dest, { replace: true });
+      }
     } catch (err) {
       setError(err.message || 'Verification failed. Incorrect or expired OTP.');
     } finally {
@@ -126,13 +134,61 @@ export function LoginPage() {
           <LanguageSwitcher />
         </div>
 
-        <div style={{ marginBottom: 'var(--space-6)' }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 'var(--font-weight-bold)', color: 'var(--color-text)' }}>
-            {t('auth.loginTitle', 'Parent Login')}
+            {t('auth.loginTitle', 'Sign In to FEETrack')}
           </h1>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
             {t('auth.loginSubtitle', 'Enter your registered mobile number to receive a secure OTP')}
           </p>
+        </div>
+
+        {/* Quick Demo Switcher Buttons */}
+        <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setPhone('+919900000041');
+              setStep('phone');
+              setOtp('');
+              setError(null);
+            }}
+            style={{
+              flex: 1,
+              padding: '6px 8px',
+              borderRadius: 'var(--radius-sm)',
+              border: phone === '+919900000041' ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+              backgroundColor: phone === '+919900000041' ? 'var(--color-primary-light)' : 'transparent',
+              color: phone === '+919900000041' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+              fontSize: '11px',
+              fontWeight: 'bold',
+              cursor: 'pointer'
+            }}
+          >
+            Demo Parent
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPhone('+919900000001');
+              setStep('phone');
+              setOtp('');
+              setError(null);
+            }}
+            style={{
+              flex: 1,
+              padding: '6px 8px',
+              borderRadius: 'var(--radius-sm)',
+              border: phone === '+919900000001' ? '1px solid #1b4332' : '1px solid var(--color-border)',
+              backgroundColor: phone === '+919900000001' ? '#e8f5e9' : 'transparent',
+              color: phone === '+919900000001' ? '#1b4332' : 'var(--color-text-secondary)',
+              fontSize: '11px',
+              fontWeight: 'bold',
+              cursor: 'pointer'
+            }}
+          >
+            Demo Accounts Staff
+          </button>
         </div>
 
         {error && (
@@ -160,7 +216,7 @@ export function LoginPage() {
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+919900000041"
               required
-              hint="Use international format (e.g. +919900000041 for demo parent Aarav Meena)"
+              hint={phone.includes('0001') ? 'Accounts staff seeded user: +919900000001' : 'Parent seeded user: +919900000041'}
             />
             <Button
               type="submit"

@@ -19,3 +19,11 @@
 - Refund arithmetic uses integer paise and round-half-up for proportional divisions. The supplied refund formula is an assumption, not legal advice or a representation of the institute's final published policy. The processing fee is calculated on the pre-discount total fee and capped at ₹5,000. GST is split from the GST-inclusive refundable amount using the configured GST rate.
 - Risk-score weights are deterministic heuristics: payment signals cap at 50, attendance decline at 30, and test-score decline at 20. Bands are low (0–34), medium (35–64), high (65–100). This is a counsellor triage aid only, not a validated predictive model.
 - Reminder schedule generation returns only offsets on or after the injected current date; dispatch must re-check the live balance and active status immediately before sending. Persistence-level idempotency is enforced by the existing unique `(instalmentId, offsetDays)` index in the reminder model.
+
+## Phase 3 API, payment gateway, webhooks & receipts assumptions
+
+- **Payment gateway interface:** Configured via `PAYMENT_GATEWAY_PROVIDER` (defaults to `mock`). The mock provider creates deterministic mock payment URLs (`https://checkout.feetrack-mock.test/pay/...`) and generates standard HMAC-SHA256 signatures.
+- **Webhook signature verification:** Uses raw request body buffer captured before JSON parsing and `crypto.timingSafeEqual` with `PAYMENT_WEBHOOK_SECRET` to prevent timing attacks.
+- **Webhook idempotency:** Repeated webhook events with the same `gatewayRef` return `duplicate: true` and are no-ops; instalments are not credited twice and duplicate receipts are not created.
+- **Receipt calculation & sequence:** All receipt arithmetic operates in integer paise. Inclusive GST is calculated as `gst = Math.round(amount * 18 / 118)` and `base = amount - gst`, guaranteeing `base + gst = total` for every transaction. Sequential receipt numbers are generated monotonically via atomic MongoDB counter upserts (`RCP-YYYY-XXXXXX`). Failed or unmatched payments never generate receipts.
+

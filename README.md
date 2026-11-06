@@ -1,6 +1,6 @@
 # FeeTrack — Coaching Fee Tracking & Parent Portal
 
-A mobile-first fee operations MVP for a Jaipur coaching institute. The build is phased; Phase 1 establishes the monorepo, MongoDB models, demo seed, OTP authentication, role/ownership primitives and parental-consent capture.
+A mobile-first fee operations MVP for a Jaipur coaching institute. Phase 1 established foundational models, seed, OTP authentication, and consent capture. Phase 2 established domain pure functions for fee calculation, allocations, reminders, refunds, and risk scoring. Phase 3 provides REST APIs, mock payment gateway integration, secure HMAC webhooks, and GST receipts.
 
 ## Requirements
 - Node.js 20+

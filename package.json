@@ -3,5 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "workspaces": ["server", "client"],
-  "scripts": {"dev:server":"npm --workspace server run dev", "seed":"npm --workspace server run seed", "test":"npm --workspace server test"}
+  "scripts": {
+    "dev:server": "npm --workspace server run dev",
+    "seed": "npm --workspace server run seed",
+    "seed:test": "npm --workspace server run seed:test",
+    "test": "npm --workspace server test"
+  }
 }

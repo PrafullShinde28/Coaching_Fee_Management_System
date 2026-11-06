@@ -1,0 +1,11 @@
+packages:
+  - 'server'
+  - 'client'
+
+onlyBuiltDependencies:
+  - esbuild
+  - mongodb-memory-server
+
+allowBuilds:
+  esbuild: true
+  mongodb-memory-server: true

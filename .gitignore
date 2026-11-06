@@ -1,8 +1,62 @@
-node_modules
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment variables and secrets
 .env
-.env.example
-.env.*.local
-coverage
-dist
-.DS_Store
+.env.*
+!.env.example
+!.env.*.example
+
+# Build output
+dist/
+build/
+coverage/
+**/dist/
+**/build/
+**/coverage/
+
+# Logs
 *.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Runtime files
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Cache
+.cache/
+.vite/
+.eslintcache/
+.parcel-cache/
+
+# Testing
+.nyc_output/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
+
+# Local database files
+*.sqlite
+*.sqlite3
+*.db
+
+# Generated files
+*.tsbuildinfo

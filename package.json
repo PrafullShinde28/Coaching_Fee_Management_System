@@ -2,7 +2,11 @@
   "name": "jaipur-fee-portal",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["server", "client"],
+  "type": "module",
+  "workspaces": [
+    "server",
+    "client"
+  ],
   "scripts": {
     "dev:server": "npm --workspace server run dev",
     "seed": "npm --workspace server run seed",

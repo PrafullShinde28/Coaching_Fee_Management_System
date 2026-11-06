@@ -7,6 +7,9 @@
     "dev:server": "npm --workspace server run dev",
     "seed": "npm --workspace server run seed",
     "seed:test": "npm --workspace server run seed:test",
-    "test": "npm --workspace server test"
+    "test:server": "npm --workspace server test",
+    "test:client": "npm --workspace client test",
+    "build:client": "npm --workspace client run build",
+    "test": "npm --workspace server test && npm --workspace client test"
   }
 }

@@ -95,15 +95,30 @@ const tmpProfile = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-prof-phase6-'))
 const chrome = spawn('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', [
   '--headless=new',
   '--remote-debugging-port=9231',
+  '--no-sandbox',
+  '--disable-gpu',
   '--no-first-run',
   '--no-default-browser-check',
   `--user-data-dir=${tmpProfile}`
 ]);
 
-await new Promise((r) => setTimeout(r, 1500));
+chrome.stderr.on('data', (d) => console.log('CHROME STDERR:', d.toString()));
+chrome.on('error', (err) => console.error('CHROME SPAWN ERROR:', err));
+chrome.on('exit', (code, signal) => console.log('CHROME EXITED:', code, signal));
 
-const listRes = await fetch('http://127.0.0.1:9231/json/list');
-const targets = await listRes.json();
+let targets;
+for (let i = 0; i < 20; i++) {
+  try {
+    const listRes = await fetch('http://127.0.0.1:9231/json/list');
+    targets = await listRes.json();
+    if (targets && targets.length > 0) break;
+  } catch (_e) {
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+if (!targets || targets.length === 0) {
+  throw new Error('Failed to connect to Chrome CDP at port 9231');
+}
 const target = targets.find((t) => t.type === 'page') || targets[0];
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 

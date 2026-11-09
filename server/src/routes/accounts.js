@@ -949,6 +949,38 @@ router.post('/refunds', async (req, res, next) => {
   }
 });
 
+// Strict ISO date/time validator preventing impossible calendar dates (e.g. 2026-02-31)
+function isValidIsoDate(str) {
+  if (typeof str !== 'string') return false;
+  const trimmed = str.trim();
+  const isoPattern = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(?:Z|([+-]\d{2}:?\d{2}))?)?$/;
+  const match = trimmed.match(isoPattern);
+  if (!match) return false;
+
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > 31) return false;
+
+  const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+  const maxDays = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  if (day > maxDays) return false;
+
+  if (match[4] !== undefined) {
+    const hour = parseInt(match[4], 10);
+    const minute = parseInt(match[5], 10);
+    const second = parseInt(match[6], 10);
+    if (hour < 0 || hour > 23) return false;
+    if (minute < 0 || minute > 59) return false;
+    if (second < 0 || second > 59) return false;
+  }
+
+  const d = new Date(trimmed);
+  return !isNaN(d.getTime());
+}
+
 // Update refund status (process payout or reject)
 const payRefundSchema = z.object({
   action: z.enum(['pay', 'paid']),
@@ -961,11 +993,8 @@ const payRefundSchema = z.object({
   }).trim().min(1, { message: 'Transaction reference is required' }).max(100),
   paidAt: z.string({
     required_error: 'Payout date is required'
-  }).min(1, { message: 'Payout date is required' }).refine((val) => {
-    const timestamp = Date.parse(val);
-    return !isNaN(timestamp);
-  }, {
-    message: 'Invalid payout date format'
+  }).trim().min(1, { message: 'Payout date is required' }).refine(isValidIsoDate, {
+    message: 'Invalid payout date format. Must be a valid calendar date in ISO format (e.g. YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss.sssZ)'
   }),
   notes: z.string().trim().max(500).optional()
 });
@@ -996,48 +1025,75 @@ router.post('/refunds/:id/process', async (req, res, next) => {
       ? payRefundSchema.parse(req.body)
       : rejectRefundSchema.parse(req.body);
 
-    const refund = await Refund.findById(id).populate('studentId');
-    if (!refund) return res.status(404).json({ error: 'Refund record not found' });
-
-    if (refund.status === 'paid' || refund.status === 'rejected') {
-      return res.status(400).json({ error: `Refund has already been processed with status: ${refund.status}` });
-    }
-
     const isPay = payload.action === 'pay' || payload.action === 'paid';
+
+    let atomicUpdate;
     if (isPay) {
-      refund.status = 'paid';
-      refund.payout = {
-        method: payload.method,
-        reference: payload.reference.trim(),
-        paidAt: new Date(payload.paidAt),
-        processedBy: req.user._id,
-        notes: payload.notes ? payload.notes.trim() : undefined
+      atomicUpdate = {
+        $set: {
+          status: 'paid',
+          payout: {
+            method: payload.method,
+            reference: payload.reference.trim(),
+            paidAt: new Date(payload.paidAt),
+            processedBy: req.user._id,
+            ...(payload.notes ? { notes: payload.notes.trim() } : {})
+          }
+        },
+        $unset: {
+          rejection: 1
+        }
       };
-      refund.rejection = undefined;
     } else {
+      const rejectionTimestamp = clock.now();
       const rejectionReason = (payload.reason || payload.rejectionReason).trim();
-      refund.status = 'rejected';
-      refund.rejection = {
-        reason: rejectionReason,
-        rejectedBy: req.user._id,
-        rejectedAt: clock.now()
+      atomicUpdate = {
+        $set: {
+          status: 'rejected',
+          rejection: {
+            reason: rejectionReason,
+            rejectedBy: req.user._id,
+            rejectedAt: rejectionTimestamp
+          },
+          'inputs.rejectionReason': rejectionReason,
+          'inputs.rejectedBy': req.user._id,
+          'inputs.rejectedAt': rejectionTimestamp
+        },
+        $unset: {
+          payout: 1
+        }
       };
-      refund.inputs = {
-        ...refund.inputs,
-        rejectionReason,
-        rejectedBy: req.user._id,
-        rejectedAt: clock.now()
-      };
-      refund.payout = undefined;
     }
 
-    await refund.save();
-    await refund.populate([
+    // Atomic conditional status transition: only a 'confirmed' refund can be transitioned.
+    // Concurrency guarantee: MongoDB document write lock ensures only ONE concurrent request matches and transitions the record.
+    const updatedRefund = await Refund.findOneAndUpdate(
+      { _id: id, status: 'confirmed' },
+      atomicUpdate,
+      { new: true, runValidators: true }
+    ).populate([
+      { path: 'studentId' },
       { path: 'payout.processedBy', select: 'phone role name' },
       { path: 'rejection.rejectedBy', select: 'phone role name' }
     ]);
 
-    res.json({ ok: true, refund });
+    if (!updatedRefund) {
+      const existing = await Refund.findById(id);
+      if (!existing) {
+        return res.status(404).json({ error: 'Refund record not found' });
+      }
+      if (existing.status === 'paid' || existing.status === 'rejected') {
+        return res.status(400).json({ error: `Refund has already been processed with status: ${existing.status}` });
+      }
+      if (existing.status !== 'confirmed') {
+        return res.status(400).json({
+          error: `Refund cannot be processed from status '${existing.status}'. Only confirmed refunds are eligible for processing.`
+        });
+      }
+      return res.status(400).json({ error: 'Refund processing conflict: record state changed concurrently' });
+    }
+
+    res.json({ ok: true, refund: updatedRefund });
   } catch (err) {
     next(err);
   }

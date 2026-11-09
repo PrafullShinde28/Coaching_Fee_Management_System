@@ -242,7 +242,25 @@ test('7. Refund Payout and Rejection Audit Schema Fields Verification', () => {
   assert.ok(sampleRejection.rejectedAt instanceof Date && !isNaN(sampleRejection.rejectedAt), 'RejectedAt date must be valid');
   assert.ok(typeof sampleRejection.rejectedBy === 'string' && sampleRejection.rejectedBy.length > 0, 'RejectedBy staff ID required');
 
-  // Validation function enforcing mandatory payout evidence
+  // Validation function enforcing mandatory payout evidence and strict calendar ISO date validation
+  function isValidIsoDate(str) {
+    if (typeof str !== 'string') return false;
+    const trimmed = str.trim();
+    const isoPattern = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(?:Z|([+-]\d{2}:?\d{2}))?)?$/;
+    const match = trimmed.match(isoPattern);
+    if (!match) return false;
+    const year = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    const day = parseInt(match[3], 10);
+    if (month < 1 || month > 12) return false;
+    if (day < 1 || day > 31) return false;
+    const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+    const maxDays = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+    if (day > maxDays) return false;
+    const d = new Date(trimmed);
+    return !isNaN(d.getTime());
+  }
+
   function validatePayoutPayload(p) {
     if (!p.method || !['bank_transfer', 'cheque', 'upi', 'cash', 'other'].includes(p.method)) {
       throw new Error('Valid payment method is required');
@@ -250,7 +268,7 @@ test('7. Refund Payout and Rejection Audit Schema Fields Verification', () => {
     if (!p.reference || !p.reference.trim()) {
       throw new Error('Transaction reference is required');
     }
-    if (!p.paidAt || isNaN(Date.parse(p.paidAt))) {
+    if (!p.paidAt || !isValidIsoDate(p.paidAt)) {
       throw new Error('Valid payout date is required');
     }
     return true;
@@ -262,5 +280,8 @@ test('7. Refund Payout and Rejection Audit Schema Fields Verification', () => {
   assert.throws(() => validatePayoutPayload({ method: 'bank_transfer', reference: '   ', paidAt: '2026-11-06' }), /reference/);
   assert.throws(() => validatePayoutPayload({ method: 'bank_transfer', reference: 'REF-1' }), /payout date/);
   assert.throws(() => validatePayoutPayload({ method: 'bank_transfer', reference: 'REF-1', paidAt: 'invalid-date' }), /payout date/);
+  assert.throws(() => validatePayoutPayload({ method: 'bank_transfer', reference: 'REF-1', paidAt: '2026-02-31' }), /payout date/);
+  assert.throws(() => validatePayoutPayload({ method: 'bank_transfer', reference: 'REF-1', paidAt: '2026-04-31' }), /payout date/);
+  assert.ok(validatePayoutPayload({ method: 'bank_transfer', reference: 'REF-1', paidAt: '2026-11-06' }));
   assert.ok(validatePayoutPayload({ method: 'upi', reference: 'UPI-9821734', paidAt: '2026-11-06T10:00:00.000Z' }));
 });

@@ -262,7 +262,7 @@ test('7. Refunds: calculates preview, enforces 10-day deadline, records refund, 
   const expiredData = await expiredRes.json();
   assert.match(expiredData.error, /deadline of 10 days/i);
 
-  // Now test an eligible student who left within 10 days (e.g. left on 2026-10-28)
+  // Now test an eligible student who left within 10 days
   const eligibleStudent = await Student.create({
     studentId: 'STU-REFUND-ELIGIBLE',
     name: 'Rohan Verma',
@@ -270,7 +270,7 @@ test('7. Refunds: calculates preview, enforces 10-day deadline, records refund, 
     batchId: student.batchId,
     parentUserId: student.parentUserId,
     status: 'left',
-    leftOn: new Date('2026-10-28') // 5 days ago relative to 2026-11-02
+    leftOn: new Date(new Date(clock.today()).getTime() - 3 * 86400000) // 3 days ago relative to clock.today()
   });
 
   await FeePlan.create({
@@ -405,7 +405,7 @@ test('10. Refund Payout & Rejection Audit Validation: enforces mandatory fields,
     batchId: batch._id,
     parentUserId: student.parentUserId,
     status: 'left',
-    leftOn: new Date('2026-10-30')
+    leftOn: new Date(new Date(clock.today()).getTime() - 3 * 86400000)
   });
 
   const testFeePlan = await FeePlan.create({
@@ -428,7 +428,7 @@ test('10. Refund Payout & Rejection Audit Validation: enforces mandatory fields,
     inputs: { totalFee: 4000000, paid: 4000000, daysUsed: 10, termDays: 100 },
     breakdown: { netRefund: 3000000, processingFee: 200000 },
     status: 'confirmed',
-    deadline: new Date('2026-11-09')
+    deadline: new Date(new Date(clock.today()).getTime() + 7 * 86400000)
   });
 
   const processUrl = `${baseUrl}/api/accounts/refunds/${testRefund._id}/process`;
@@ -489,13 +489,55 @@ test('10. Refund Payout & Rejection Audit Validation: enforces mandatory fields,
   });
   assert.equal(noDateRes.status, 400, 'Missing payout date must return 400');
 
-  // 8. Invalid payout date format
+  // 8. Invalid payout date format and impossible calendar dates
   const badDateRes = await fetch(processUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
     body: JSON.stringify({ action: 'pay', method: 'bank_transfer', reference: 'NEFT-991', paidAt: 'not-a-valid-date' })
   });
   assert.equal(badDateRes.status, 400, 'Invalid payout date format must return 400');
+
+  const impossibleFebDateRes = await fetch(processUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
+    body: JSON.stringify({ action: 'pay', method: 'bank_transfer', reference: 'NEFT-991', paidAt: '2026-02-31' })
+  });
+  assert.equal(impossibleFebDateRes.status, 400, 'Impossible February 31st date must return 400');
+
+  const impossibleAprDateRes = await fetch(processUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
+    body: JSON.stringify({ action: 'pay', method: 'bank_transfer', reference: 'NEFT-991', paidAt: '2026-04-31' })
+  });
+  assert.equal(impossibleAprDateRes.status, 400, 'Impossible April 31st date must return 400');
+
+  // 8b. Enforce valid starting status: draft refund cannot be processed
+  const draftRefund = await Refund.create({
+    studentId: testStudent._id,
+    inputs: { totalFee: 4000000, paid: 4000000, daysUsed: 10, termDays: 100 },
+    breakdown: { netRefund: 3000000, processingFee: 200000 },
+    status: 'draft',
+    deadline: new Date('2026-11-09')
+  });
+
+  const draftPayRes = await fetch(`${baseUrl}/api/accounts/refunds/${draftRefund._id}/process`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
+    body: JSON.stringify({ action: 'paid', method: 'bank_transfer', reference: 'NEFT-DRAFT', paidAt: '2026-11-06' })
+  });
+  assert.equal(draftPayRes.status, 400, 'Draft refund must not be processed for payout');
+
+  const draftRejRes = await fetch(`${baseUrl}/api/accounts/refunds/${draftRefund._id}/process`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
+    body: JSON.stringify({ action: 'reject', reason: 'Draft rejection attempt' })
+  });
+  assert.equal(draftRejRes.status, 400, 'Draft refund must not be processed for rejection');
+
+  const freshDraft = await Refund.findById(draftRefund._id);
+  assert.equal(freshDraft.status, 'draft', 'Draft refund status must remain draft');
+  assert.equal(freshDraft.payout, undefined);
+  assert.equal(freshDraft.rejection, undefined);
 
   // 9. Missing rejection reason when rejecting
   const noReasonRes = await fetch(processUrl, {
@@ -533,13 +575,24 @@ test('10. Refund Payout & Rejection Audit Validation: enforces mandatory fields,
   assert.ok(rejectData.refund.rejection.rejectedAt, 'Rejection timestamp must exist');
   assert.equal(String(rejectData.refund.rejection.rejectedBy._id || rejectData.refund.rejection.rejectedBy), String(accountsUser._id));
 
-  // 11. Duplicate processing attempt on already-rejected refund
+  // Consistent rejection timestamps check
+  assert.ok(rejectData.refund.inputs.rejectedAt, 'Inputs rejection timestamp must exist');
+  assert.equal(
+    new Date(rejectData.refund.rejection.rejectedAt).toISOString(),
+    new Date(rejectData.refund.inputs.rejectedAt).toISOString(),
+    'rejection.rejectedAt and inputs.rejectedAt timestamps must be identical'
+  );
+
+  // 11. Payout attempt cannot overwrite rejection
   const dupRejectRes = await fetch(processUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
     body: JSON.stringify({ action: 'pay', method: 'upi', reference: 'UPI-99', paidAt: '2026-11-06T10:00:00Z' })
   });
   assert.equal(dupRejectRes.status, 400, 'Processing already-rejected refund must return 400');
+  const freshAfterRejectAttempt = await Refund.findById(testRefund._id);
+  assert.equal(freshAfterRejectAttempt.status, 'rejected');
+  assert.equal(freshAfterRejectAttempt.payout, undefined, 'Payout must not be written on rejected refund');
 
   // 12. Create another refund for successful payout & duplicate payout test
   const payoutRefund = await Refund.create({
@@ -547,7 +600,7 @@ test('10. Refund Payout & Rejection Audit Validation: enforces mandatory fields,
     inputs: { totalFee: 4000000, paid: 4000000, daysUsed: 10, termDays: 100 },
     breakdown: { netRefund: 3000000, processingFee: 200000 },
     status: 'confirmed',
-    deadline: new Date('2026-11-09')
+    deadline: new Date(new Date(clock.today()).getTime() + 7 * 86400000)
   });
 
   const payoutUrl = `${baseUrl}/api/accounts/refunds/${payoutRefund._id}/process`;
@@ -571,11 +624,108 @@ test('10. Refund Payout & Rejection Audit Validation: enforces mandatory fields,
   assert.equal(new Date(payData.refund.payout.paidAt).toISOString(), '2026-11-06T14:30:00.000Z');
   assert.equal(String(payData.refund.payout.processedBy._id || payData.refund.payout.processedBy), String(accountsUser._id));
 
-  // 13. Duplicate payout attempt on already-paid refund
+  // 13. Rejection attempt cannot overwrite payout
+  const rejOnPaidRes = await fetch(payoutUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
+    body: JSON.stringify({ action: 'reject', reason: 'Attempt to reject paid refund' })
+  });
+  assert.equal(rejOnPaidRes.status, 400, 'Rejecting already-paid refund must return 400');
+  const freshAfterPayAttempt = await Refund.findById(payoutRefund._id);
+  assert.equal(freshAfterPayAttempt.status, 'paid');
+  assert.equal(freshAfterPayAttempt.rejection, undefined, 'Rejection must not be written on paid refund');
+
+  // 14. Duplicate payout attempt on already-paid refund
   const dupPayRes = await fetch(payoutUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
     body: JSON.stringify({ action: 'paid', method: 'cash', reference: 'CASH-001', paidAt: '2026-11-06T15:00:00Z' })
   });
   assert.equal(dupPayRes.status, 400, 'Processing already-paid refund must return 400');
+});
+
+test('11. Refund Processing Concurrency Hardening: atomic transitions block simultaneous payouts and rejections', async () => {
+  const student = await Student.findOne();
+  const centre = await Centre.findOne();
+  const batch = await Batch.findOne();
+
+  // Test Case A: Concurrent Payouts against the same confirmed refund
+  const concurrentPayRefund = await Refund.create({
+    studentId: student._id,
+    inputs: { totalFee: 3000000, paid: 3000000, daysUsed: 5, termDays: 100 },
+    breakdown: { netRefund: 2500000, processingFee: 150000 },
+    status: 'confirmed',
+    deadline: new Date(new Date(clock.today()).getTime() + 7 * 86400000)
+  });
+
+  const payUrl = `${baseUrl}/api/accounts/refunds/${concurrentPayRefund._id}/process`;
+  const [payRes1, payRes2] = await Promise.all([
+    fetch(payUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
+      body: JSON.stringify({
+        action: 'paid',
+        method: 'bank_transfer',
+        reference: 'CONC-PAY-A',
+        paidAt: '2026-11-06T10:00:00.000Z'
+      })
+    }),
+    fetch(payUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
+      body: JSON.stringify({
+        action: 'paid',
+        method: 'upi',
+        reference: 'CONC-PAY-B',
+        paidAt: '2026-11-06T10:00:00.000Z'
+      })
+    })
+  ]);
+
+  const payStatuses = [payRes1.status, payRes2.status].sort();
+  assert.deepEqual(payStatuses, [200, 400], 'Exactly one concurrent payout request must succeed and the other must return 400');
+
+  // Verify DB state is intact and reflects the single winning transaction
+  const finalPaidRefund = await Refund.findById(concurrentPayRefund._id);
+  assert.equal(finalPaidRefund.status, 'paid');
+  assert.ok(finalPaidRefund.payout);
+  assert.ok(['CONC-PAY-A', 'CONC-PAY-B'].includes(finalPaidRefund.payout.reference));
+  assert.equal(finalPaidRefund.rejection, undefined);
+
+  // Test Case B: Concurrent Rejections against the same confirmed refund
+  const concurrentRejRefund = await Refund.create({
+    studentId: student._id,
+    inputs: { totalFee: 3000000, paid: 3000000, daysUsed: 5, termDays: 100 },
+    breakdown: { netRefund: 2500000, processingFee: 150000 },
+    status: 'confirmed',
+    deadline: new Date(new Date(clock.today()).getTime() + 7 * 86400000)
+  });
+
+  const rejUrl = `${baseUrl}/api/accounts/refunds/${concurrentRejRefund._id}/process`;
+  const [rejRes1, rejRes2] = await Promise.all([
+    fetch(rejUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
+      body: JSON.stringify({ action: 'reject', reason: 'Concurrent rejection reason A' })
+    }),
+    fetch(rejUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: accountsCookie },
+      body: JSON.stringify({ action: 'reject', reason: 'Concurrent rejection reason B' })
+    })
+  ]);
+
+  const rejStatuses = [rejRes1.status, rejRes2.status].sort();
+  assert.deepEqual(rejStatuses, [200, 400], 'Exactly one concurrent rejection request must succeed and the other must return 400');
+
+  const finalRejRefund = await Refund.findById(concurrentRejRefund._id);
+  assert.equal(finalRejRefund.status, 'rejected');
+  assert.ok(finalRejRefund.rejection);
+  assert.ok(['Concurrent rejection reason A', 'Concurrent rejection reason B'].includes(finalRejRefund.rejection.reason));
+  assert.equal(
+    new Date(finalRejRefund.rejection.rejectedAt).toISOString(),
+    new Date(finalRejRefund.inputs.rejectedAt).toISOString(),
+    'Concurrent rejection record must have matching rejection timestamps'
+  );
+  assert.equal(finalRejRefund.payout, undefined);
 });

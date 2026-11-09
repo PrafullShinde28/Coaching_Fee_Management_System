@@ -78,7 +78,7 @@ The system replaces manual spreadsheets, unlinked paper receipts, and delayed ba
                                            v
 +-----------------------------------------------------------------------------------+
 | DATA LAYER (MongoDB Atlas Replica Set Cluster)                                    |
-| - 11 Mongoose Schemas with compound indexes and atomic concurrency controls       |
+| - 16 Mongoose Models (with 3 embedded schemas) with compound indexes and atomic controls |
 +-----------------------------------------------------------------------------------+
 ```
 

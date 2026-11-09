@@ -7,6 +7,7 @@ const schema = z.object({
   MONGODB_URI: z.string().default('mongodb://127.0.0.1:27017/jaipur_fee_portal'),
   JWT_SECRET: z.string().min(24).default('development-only-change-this-secret-12345'),
   COOKIE_NAME: z.string().default('fee_portal_session'),
+  COOKIE_DOMAIN: z.string().trim().optional().transform(v => v || undefined),
   DEMO_TODAY: z.string().optional(), DEMO_OTP: z.string().length(6).default('246810'),
   OTP_TTL_MINUTES: z.coerce.number().int().positive().default(5),
   CLIENT_ORIGIN: z.string().url().default('http://localhost:5173'),

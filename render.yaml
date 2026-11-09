@@ -1,0 +1,38 @@
+# Render Blueprint configuration for FEETrack Native Node.js Backend
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: feetrack-api
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: corepack enable && corepack prepare pnpm@11.22.0 --activate && pnpm install --frozen-lockfile
+    startCommand: pnpm --filter @fee-portal/server start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: COOKIE_NAME
+        value: fee_portal_session
+      - key: COOKIE_DOMAIN
+        sync: false
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: PAYMENT_GATEWAY_PROVIDER
+        value: mock
+      - key: PAYMENT_WEBHOOK_SECRET
+        generateValue: true
+      - key: MESSAGE_PROVIDER
+        value: mock
+      - key: REMINDER_CRON_ENABLED
+        value: "false"
+      - key: RISK_CRON_ENABLED
+        value: "false"

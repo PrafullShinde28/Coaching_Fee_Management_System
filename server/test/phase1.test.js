@@ -75,6 +75,36 @@ test('cookie security options: development vs production', () => {
   assert.equal(prodClear.path, '/');
 });
 
+test('cookie domain options: unconfigured vs configured shared domain', () => {
+  // 1. Unconfigured domain: property should not exist on cookie options
+  const unconfiguredOptions = getCookieOptions(true, undefined);
+  assert.equal('domain' in unconfiguredOptions, false, 'domain must be omitted when unconfigured');
+  assert.equal(unconfiguredOptions.httpOnly, true);
+  assert.equal(unconfiguredOptions.secure, true);
+  assert.equal(unconfiguredOptions.sameSite, 'lax');
+  assert.equal(unconfiguredOptions.path, '/');
+
+  // 2. Configured domain (e.g., .feetrack.in for shared apex domain)
+  const configuredOptions = getCookieOptions(true, '.feetrack.in');
+  assert.equal(configuredOptions.domain, '.feetrack.in', 'domain must match configured value');
+  assert.equal(configuredOptions.httpOnly, true);
+  assert.equal(configuredOptions.secure, true);
+  assert.equal(configuredOptions.sameSite, 'lax');
+  assert.equal(configuredOptions.path, '/');
+  assert.equal(configuredOptions.maxAge, 8 * 60 * 60 * 1000);
+
+  // 3. Clear cookie options must also respect domain configuration
+  const clearUnconfigured = getClearCookieOptions(true, undefined);
+  assert.equal('domain' in clearUnconfigured, false, 'domain must be omitted from clearCookie when unconfigured');
+
+  const clearConfigured = getClearCookieOptions(true, '.feetrack.in');
+  assert.equal(clearConfigured.domain, '.feetrack.in', 'domain must match configured value on clearCookie');
+  assert.equal(clearConfigured.httpOnly, true);
+  assert.equal(clearConfigured.secure, true);
+  assert.equal(clearConfigured.sameSite, 'lax');
+  assert.equal(clearConfigured.path, '/');
+});
+
 test('demo clock uses configured reference date', () => {
   assert.equal(createClock({ demoToday: '2026-11-02' }).today(), '2026-11-02');
 });

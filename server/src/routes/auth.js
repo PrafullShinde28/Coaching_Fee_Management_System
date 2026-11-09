@@ -12,19 +12,21 @@ const router = Router();
 export const otpStore = new Map();
 const phoneSchema = z.string().regex(/^\+?[1-9]\d{9,14}$/);
 
-export const getCookieOptions = (isProduction = env.NODE_ENV === 'production') => ({
+export const getCookieOptions = (isProduction = env.NODE_ENV === 'production', cookieDomain = env.COOKIE_DOMAIN) => ({
   httpOnly: true,
   secure: isProduction,
   sameSite: 'lax',
   maxAge: 8 * 60 * 60 * 1000,
-  path: '/'
+  path: '/',
+  ...(cookieDomain ? { domain: cookieDomain } : {})
 });
 
-export const getClearCookieOptions = (isProduction = env.NODE_ENV === 'production') => ({
+export const getClearCookieOptions = (isProduction = env.NODE_ENV === 'production', cookieDomain = env.COOKIE_DOMAIN) => ({
   httpOnly: true,
   secure: isProduction,
   sameSite: 'lax',
-  path: '/'
+  path: '/',
+  ...(cookieDomain ? { domain: cookieDomain } : {})
 });
 
 export const otpLimiter = rateLimit({

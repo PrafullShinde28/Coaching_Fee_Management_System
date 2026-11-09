@@ -84,7 +84,39 @@ app.use(cors({ origin: env.CLIENT_ORIGIN, credentials: true }));
 
 ---
 
-## 3. Step-by-Step Deployment Runbook
+## 3. Local Setup & Verification
+
+Before deploying to cloud environments, evaluators and engineers can run and verify the system locally:
+
+1. **Prerequisites:** Node.js 20+ (Node 22 LTS recommended) and pnpm 11+ (or npm).
+2. **Clone & Install Dependencies:**
+   ```bash
+   git clone https://github.com/PrafullShinde28/Coaching_Fee_Management_System.git
+   cd fee-portal
+   pnpm install --frozen-lockfile   # Or: npm install
+   ```
+3. **Environment Configuration:**
+   ```bash
+   cp .env.example .env
+   ```
+   Configure `MONGODB_URI` (local MongoDB or Atlas URI) and a `JWT_SECRET` (at least 32 characters).
+4. **Seed Deterministic Demo Database:**
+   ```bash
+   npm run seed
+   ```
+5. **Start Local Development Services:**
+   - **Backend API:** `npm run dev:server` (listens on `http://0.0.0.0:4000`)
+   - **Frontend SPA:** `npm --workspace client run dev` (serves on `http://localhost:5173`)
+6. **Execute Verification Test Harness:**
+   - Seed Idempotency: `npm run seed:test`
+   - Server Suite: `npm run test:server` (82 tests passing)
+   - Client Suite: `npm run test:client` (17 tests passing)
+   - Backend Health Probe: `node scripts/verify-backend-health.js`
+   - Headless Chrome E2E Suite: `node scripts/verify-browser-phase6.js` (13 checks passing)
+
+---
+
+## 4. Step-by-Step Cloud Deployment Runbook
 
 ### Step 1: Provision MongoDB Atlas Cluster
 1. Log in to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas).
@@ -141,7 +173,7 @@ FEETrack includes a pre-configured `client/vercel.json` defining Vite framework 
 
 ---
 
-## 4. Environment Variables Reference
+## 5. Environment Variables Reference
 
 Only the **names** of environment variables are documented here. Secrets and sensitive values must be generated securely and injected via platform dashboards.
 
@@ -174,7 +206,7 @@ Only the **names** of environment variables are documented here. Secrets and sen
 
 ---
 
-## 5. Health Check & Deployment Verification
+## 6. Health Check & Deployment Verification
 
 ### Verifying the Live Backend
 Once the Render web service has deployed, verify its health endpoint:
@@ -208,7 +240,7 @@ Access-Control-Allow-Credentials: true
 
 ---
 
-## 6. Reviewer Demo Logins (Synthetic Accounts)
+## 7. Reviewer Demo Logins (Synthetic Accounts)
 
 When evaluating a demo deployment where `NODE_ENV !== 'production'` or `DEMO_OTP` is enabled, use the fixed OTP **`246810`**.
 
@@ -224,7 +256,7 @@ When evaluating a demo deployment where `NODE_ENV !== 'production'` or `DEMO_OTP
 
 ---
 
-## 7. Operational Troubleshooting
+## 8. Operational Troubleshooting
 
 | Symptom | Root Cause | Solution |
 |---|---|---|
